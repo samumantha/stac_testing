@@ -13,6 +13,8 @@ from rasterio.crs import CRS
 
 """
 ## TODO:
+* make it proper class or script
+* check client/resource
 * implement temporal extent updating
 * band information from eo extension to assets
 * this is creating from scratch, make updating possible
