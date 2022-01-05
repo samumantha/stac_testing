@@ -113,12 +113,13 @@ class STACing(object):
 
                     #rootcollection.describe()
                     
-                    rootcollection.normalize_hrefs('./stacs_eo_2')
+                    rootcollection.normalize_hrefs('stacs_eo_3')
 
                     rootcollection.validate_all()
                     rootcollection.save()
         
             # update spatial extent
+            print('updating spatial extent of tile')
             bounds = [list(GeometryCollection([shape(s.geometry) for s in tilecollection.get_all_items()]).bounds)]
             tilecollection.extent.spatial = pystac.SpatialExtent(bounds)
         # update spatial extent
@@ -155,7 +156,8 @@ class STACing(object):
         tmp_extent = pystac.TemporalExtent([(capture_date, datetime.today())])
         extent = pystac.Extent(sp_extent, tmp_extent)
 
-        rootcollection = pystac.Collection(id='Sentinel-2', description = 'Sentinel-2 dataset', extent = extent)
+        # catalog_types: https://pystac.readthedocs.io/en/1.0/api.html#pystac.CatalogType
+        rootcollection = pystac.Collection(id='Sentinel-2', description = 'Sentinel-2 dataset', extent = extent, catalog_type ='SELF_CONTAINED')
 
         print('root collection made')
 
