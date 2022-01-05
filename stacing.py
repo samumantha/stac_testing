@@ -16,6 +16,7 @@ from rasterio.crs import CRS
 * implement temporal extent updating
 * band information from eo extension to assets
 * this is creating from scratch, make updating possible
+* also check https://github.com/stac-utils/stac-sentinel/blob/main/stac_sentinel/sentinel.py
 
 """
 
