@@ -14,10 +14,9 @@ from rasterio.crs import CRS
 """
 ## TODO:
 * implement temporal extent updating
-* band information to assets
+* band information from eo extension to assets
 * this is creating from scratch, make updating possible
 
-* 
 """
 
 # make Sentinel-2 collection with metadata
@@ -116,14 +115,9 @@ class STACing(object):
 
 
                     tilecollection.add_item(item)
-
-                    #print(list(tilecollection.get_items()))
-                    #tilecollectionitems = [x.id for x in list(tilecollection.get_items())]
-                    #print(tilecollectionitems)
-
-                    #rootcollection.describe()
                     
-                    rootcollection.normalize_hrefs('stacs_eo_7')
+                    # safe to stac directory
+                    rootcollection.normalize_hrefs('stac')
 
                     rootcollection.validate_all()
 
@@ -198,54 +192,25 @@ class STACing(object):
         return rootcollection 
 
 
-    def get_tile_extent(self,tile):
-
-
-        tileextent = [[0,0,0,0]]
-        print(tileextent)
-
-
-        return tileextent
-
-    def get_temporal_extent(self):
-        
-        temporalextent = [(datetime.strptime('2015-10-22', '%Y-%m-%d'), datetime.today())]
-
-        return temporalextent
-
-
     # make tilecollection with collective metadata
 
     def make_tile_collection(self,tile):
 
         print('making tilecollection')
 
-        sp_extent = pystac.SpatialExtent(self.get_tile_extent(tile))
-        tmp_extent = pystac.TemporalExtent(self.get_temporal_extent())
+        #placeholders added, spatial extent is being updated after item is added, temporal extent updating is still to do
+        sp_extent = pystac.SpatialExtent([[0,0,0,0]])
+        tmp_extent = pystac.TemporalExtent([(datetime.strptime('2015-10-22', '%Y-%m-%d'), datetime.today())])
         extent = pystac.Extent(sp_extent, tmp_extent)
         
-
         tilecollection = pystac.Collection(id=tile, description = 'Sentinel-2 dataset of tile ' + tile, extent = extent, stac_extensions='')
 
         print('tilecollection made')
 
         return tilecollection
 
-
-    """
-    def make_bucketname(self, safename):
-        bucketbase = 'Sentinel2-MSIL2A-cloud-0-95-'
-        year = safename.split('_')[2][0:4]
-        tile = safename.split('_')[5]
-        bucketname = bucketbase + year + '-' + tile
-        return bucketname
-    """
-
-
-
     def make_item(self, uri, metadatacontent, crs_string):
 
-    
         print('making item')
         params = {}
         #print('nametest: '+ uri.split('/')[3])
@@ -253,25 +218,20 @@ class STACing(object):
 
     
         with rasterio.open(uri) as src:
-            # does this give lon,lat? self, bounds, crs_string)
+
             print(list([src.bounds]))
+            # as lat,lon
             params['bbox'] = self.transform_crs(list([src.bounds]),crs_string)
             # is this footprint? ie bounds of everything excluding bounding nan?
             params['geometry'] = mapping(box(*params['bbox']))
             
-            
-        # not currently used
-        #mtddict = self.get_metadata_from_xml(metadatacontent)
-        # not currently used, could not find extension schema
+
         mtddict = self.get_metadata_from_xml(metadatacontent)
 
-        
 
         # could also be start_datetime and end_datetime from metadata
         params['datetime'] = datetime.strptime(uri.split('_')[2][0:8], '%Y%m%d')
-        #are we sure this is right date? below are not accepted?
-        #params['start_datetime'] = mtddict['start_time']
-        #params['end_datetime'] = mtddict['end_time']
+
         params['properties'] = {}
 
         params['properties']['cloud_cover'] = mtddict['cc_perc']
