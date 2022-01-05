@@ -78,11 +78,12 @@ class STACing(object):
                 jp2images = []
                 # only jp2 that are image bands
                 [jp2images.append(x) for x in bucketcontentjp2 if safe in x and 'IMG_DATA' in x]
-
+                # jp2 that are preview images
+                
+                previewimage = [x for x in bucketcontentjp2 if safe in x and 'PVI' in x][0]
 
                 metadatacontent = self.get_metadata_content(bucket, metadatafile, resource)
 
-        
                 for jp2image in jp2images:
 
                     print('one image')
@@ -100,6 +101,9 @@ class STACing(object):
                         
                         item = [x for x in list(tilecollection.get_items()) if safe in x.id][0]
                         self.add_asset(item, uri)
+                        # add preview image 
+                        self.add_asset(item, '/vsis/' + bucket + '/' + previewimage, True)
+
 
                     tilecollection.add_item(item)
 
@@ -235,7 +239,7 @@ class STACing(object):
 
         params['properties']['cloud_cover'] = mtddict['cc_perc']
         #following are not part of eo extension
-        params['properties']['no_data'] = mtddict['nodata_perc']
+        params['properties']['data_cover'] = mtddict['data_cover']
         params['properties']['orbit'] = mtddict['orbit']
         params['properties']['baseline'] = mtddict['baseline']
         # following are part of general metadata
@@ -257,7 +261,9 @@ class STACing(object):
 
         return stacitem
 
-    def add_asset(self, stacitem, uri):
+    def add_asset(self, stacitem, uri ,thumbnail=False):
+
+        
         
         print('adding asset')
         full_bandname = uri.split('/')[-1].split('.')[0]
@@ -265,9 +271,20 @@ class STACing(object):
         #print(full_bandname)
         #print(uri)
 
-        stacitem.add_asset(key=full_bandname, asset=pystac.Asset(href=uri,
-                                                    title=full_bandname,
-                                                    media_type=pystac.MediaType.JPEG2000))
+        if not thumbnail:
+            print('false')
+            print(full_bandname)
+
+            stacitem.add_asset(key=full_bandname, asset=pystac.Asset(href=uri,
+                                                        title=full_bandname,
+                                                        media_type=pystac.MediaType.JPEG2000))
+        else:
+            print('true')
+            print(full_bandname)
+            stacitem.add_asset(key=full_bandname, asset=pystac.Asset(href=uri,
+                                                        title=full_bandname,
+                                                        roles= ['thumbnail'],
+                                                        media_type=pystac.MediaType.JPEG2000))
         print('asset added')
         stacitem.validate()
         print('asset validated')
@@ -285,7 +302,7 @@ class STACing(object):
         doc = minidom.parse(metadatabody)
         metadatadict = {}
         metadatadict['cc_perc'] = int(float(self.get_xml_content(doc,'Cloud_Coverage_Assessment')))
-        metadatadict['nodata_perc'] = 100 - float(self.get_xml_content(doc,'NODATA_PIXEL_PERCENTAGE'))
+        metadatadict['data_cover'] = 100 - int(float(self.get_xml_content(doc,'NODATA_PIXEL_PERCENTAGE')))
         #metadatadict['start_time'] = self.get_xml_content(doc,'PRODUCT_START_TIME')
         #metadatadict['end_time'] = self.get_xml_content(doc,'PRODUCT_STOP_TIME')
         #metadatadict['bbox'] = self.get_xml_content(doc,'EXT_POS_LIST')
