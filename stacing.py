@@ -8,14 +8,15 @@ from xml.dom import minidom
 import json
 from pystac.extensions.eo import EOExtension #, Band
 
-from rasterio.warp import transform_geom
+from rasterio.warp import transform_bounds
 from rasterio.crs import CRS
 
 """
 ## TODO:
-* implement spatial extent updating
 * implement temporal extent updating
+* band information to assets
 * this is creating from scratch, make updating possible
+
 * 
 """
 
@@ -66,6 +67,8 @@ class STACing(object):
             bucketcontentjp2 = [x for x in full_bucketcontent if '.jp2' in x]
             #provides list of 'S2A_MSIL2A_20160625T100032_N0204_R122_T34VDN_20160625T100027.SAFE/GRANULE/L2A_T34VDN_A005267_20160625T100027/QI_DATA/L2A_T34VDN_20160625T100032_SNW_60m.jp2'
             bucketcontentmtd = [x for x in full_bucketcontent if 'MTD_MSIL2A.xml' in x]
+            #crs is given in S2B_MSIL2A_20200626T095029_N0214_R079_T34VFN_20200626T123234.SAFE/GRANULE/L2A_T34VFN_A017265_20200626T095032/MTD_TL.xml
+            bucketcontentcrs = [x for x in full_bucketcontent if 'MTD_TL.xml' in x]
 
 
 
@@ -78,6 +81,10 @@ class STACing(object):
 
                 # this results in one file, should work without list!
                 metadatafile = [x for x in bucketcontentmtd if safe in x][0]
+                crsmetadatafile = [x for x in bucketcontentcrs if safe in x][0]
+                safecrs_string = self.get_crs(self.get_metadata_content(bucket, crsmetadatafile, resource))
+
+
                 jp2images = []
                 # only jp2 that are image bands
                 [jp2images.append(x) for x in bucketcontentjp2 if safe in x and 'IMG_DATA' in x]
@@ -98,7 +105,7 @@ class STACing(object):
                     
 
                     if not safe in [x.id for x in list(tilecollection.get_items())]:
-                        item = self.make_item(uri, metadatacontent)
+                        item = self.make_item(uri, metadatacontent,safecrs_string)
 
                     else:
                         
@@ -116,25 +123,51 @@ class STACing(object):
 
                     #rootcollection.describe()
                     
-                    rootcollection.normalize_hrefs('stacs_eo_4')
+                    rootcollection.normalize_hrefs('stacs_eo_7')
 
                     rootcollection.validate_all()
+
+                    # update spatial extent
+                    print('update spatial extent of root')
+                    rootbounds= [list(GeometryCollection([shape(s.geometry) for s in rootcollection.get_all_items()]).bounds)]
+                    #bounds_transformed = self.transform_crs(rootbounds, safecrs_string)
+                    rootcollection.extent.spatial = pystac.SpatialExtent(rootbounds)
+
+                    # update spatial extent
+                    print('updating spatial extent of tile')
+                    tilebounds= [list(GeometryCollection([shape(s.geometry) for s in tilecollection.get_all_items()]).bounds)]
+                    #bounds_transformed = self.transform_crs(tilebounds, safecrs_string)
+                    tilecollection.extent.spatial = pystac.SpatialExtent(tilebounds)
+
                     rootcollection.save()
         
-            # update spatial extent
-            print('updating spatial extent of tile')
-            bounds = [list(GeometryCollection([shape(s.geometry) for s in tilecollection.get_all_items()]).bounds)]
-            crs = CRS.from_epsg(4326)
-            bounds_transformed = transform_geom(bounds.crs, crs, bounds)
-            tilecollection.extent.spatial = pystac.SpatialExtent(bounds_transformed)
+
+
         # update spatial extent
-        bounds_root = [list(GeometryCollection([shape(s.geometry) for s in rootcollection.get_all_items()]).bounds)]
-        crs_root = CRS.from_epsg(4326)
-        bounds_root_transformed = transform_geom(bounds_root.crs, crs_root, bounds_root)
-        rootcollection.extent.spatial = pystac.SpatialExtent(bounds_root_transformed)
+        print('transform')
+        rootbounds= [list(GeometryCollection([shape(s.geometry) for s in rootcollection.get_all_items()]).bounds)]
+        bounds_transformed = self.transform_crs(rootbounds, safecrs_string)
+        rootcollection.extent.spatial = pystac.SpatialExtent(bounds_transformed)
 
+
+    def transform_crs(self, bounds, crs_string):
         
+        crs = CRS.from_epsg(4326)
+        safecrs = CRS.from_epsg(int(crs_string))
+        bounds_transformed = list(transform_bounds(safecrs, crs, bounds[0][0], bounds[0][1], bounds[0][2], bounds[0][3]))
+        
+        return bounds_transformed
 
+
+    def get_crs(self,crsmetadatafile):
+        print(crsmetadatafile)
+        doc = minidom.parse(crsmetadatafile)
+        print(doc)
+
+        crsstring = self.get_xml_content(doc, 'HORIZONTAL_CS_CODE')
+        crsstring = crsstring.split(':')[-1]
+
+        return crsstring
 
     def get_metadata_content(self, bucket, metadatafile, resource):
 
@@ -158,7 +191,7 @@ class STACing(object):
         # collection instead of catalog because catalog does not have extent information
 
         # preliminary apprx Finland, later with bbox of all tiles from bucketname
-        sp_extent = pystac.SpatialExtent([[20.57,59.93,29.80,70.29]])
+        sp_extent = pystac.SpatialExtent([[0,0,0,0]])
         # fill with general Sentinel-2 timeframe, later get from all safefiles
         capture_date = datetime.strptime('2015-06-29', '%Y-%m-%d')
         tmp_extent = pystac.TemporalExtent([(capture_date, datetime.today())])
@@ -175,7 +208,7 @@ class STACing(object):
     def get_tile_extent(self,tile):
 
 
-        tileextent = [[22.57,63.93,27.80,68.29]]
+        tileextent = [[0,0,0,0]]
         print(tileextent)
 
 
@@ -217,7 +250,7 @@ class STACing(object):
 
 
 
-    def make_item(self, uri, metadatacontent):
+    def make_item(self, uri, metadatacontent, crs_string):
 
     
         print('making item')
@@ -227,8 +260,9 @@ class STACing(object):
 
     
         with rasterio.open(uri) as src:
-            # does this give lon,lat?
-            params['bbox'] = list(src.bounds)
+            # does this give lon,lat? self, bounds, crs_string)
+            print(list([src.bounds]))
+            params['bbox'] = self.transform_crs(list([src.bounds]),crs_string)
             # is this footprint? ie bounds of everything excluding bounding nan?
             params['geometry'] = mapping(box(*params['bbox']))
             
