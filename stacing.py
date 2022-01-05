@@ -143,13 +143,6 @@ class STACing(object):
         
 
 
-        # update spatial extent
-        print('transform')
-        rootbounds= [list(GeometryCollection([shape(s.geometry) for s in rootcollection.get_all_items()]).bounds)]
-        bounds_transformed = self.transform_crs(rootbounds, safecrs_string)
-        rootcollection.extent.spatial = pystac.SpatialExtent(bounds_transformed)
-
-
     def transform_crs(self, bounds, crs_string):
         
         crs = CRS.from_epsg(4326)
