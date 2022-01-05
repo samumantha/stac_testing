@@ -6,7 +6,10 @@ import rasterio
 from shapely.geometry import box, mapping, GeometryCollection, shape
 from xml.dom import minidom
 import json
-from pystac.extensions.eo import EOExtension, Band
+from pystac.extensions.eo import EOExtension #, Band
+
+from rasterio.warp import transform_geom
+from rasterio.crs import CRS
 
 """
 ## TODO:
@@ -113,7 +116,7 @@ class STACing(object):
 
                     #rootcollection.describe()
                     
-                    rootcollection.normalize_hrefs('stacs_eo_3')
+                    rootcollection.normalize_hrefs('stacs_eo_4')
 
                     rootcollection.validate_all()
                     rootcollection.save()
@@ -121,10 +124,15 @@ class STACing(object):
             # update spatial extent
             print('updating spatial extent of tile')
             bounds = [list(GeometryCollection([shape(s.geometry) for s in tilecollection.get_all_items()]).bounds)]
-            tilecollection.extent.spatial = pystac.SpatialExtent(bounds)
+            crs = CRS.from_epsg(4326)
+            bounds_transformed = transform_geom(bounds.crs, crs, bounds)
+            tilecollection.extent.spatial = pystac.SpatialExtent(bounds_transformed)
         # update spatial extent
-        bounds = [list(GeometryCollection([shape(s.geometry) for s in rootcollection.get_all_items()]).bounds)]
-        rootcollection.extent.spatial = pystac.SpatialExtent(bounds)
+        bounds_root = [list(GeometryCollection([shape(s.geometry) for s in rootcollection.get_all_items()]).bounds)]
+        crs_root = CRS.from_epsg(4326)
+        bounds_root_transformed = transform_geom(bounds_root.crs, crs_root, bounds_root)
+        rootcollection.extent.spatial = pystac.SpatialExtent(bounds_root_transformed)
+
         
 
 
