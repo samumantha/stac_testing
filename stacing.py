@@ -82,8 +82,6 @@ class STACing(object):
 
                 metadatacontent = self.get_metadata_content(bucket, metadatafile, resource)
 
-                thumbnail = self.get_thumbnail(safe)
-
         
                 for jp2image in jp2images:
 
@@ -111,18 +109,18 @@ class STACing(object):
 
                     #rootcollection.describe()
                     
-                    rootcollection.normalize_hrefs('./stacs_eo')
+                    rootcollection.normalize_hrefs('./stacs_eo_2')
 
                     rootcollection.validate_all()
                     rootcollection.save()
-        """
+        
             # update spatial extent
             bounds = [list(GeometryCollection([shape(s.geometry) for s in tilecollection.get_all_items()]).bounds)]
             tilecollection.extent.spatial = pystac.SpatialExtent(bounds)
         # update spatial extent
         bounds = [list(GeometryCollection([shape(s.geometry) for s in rootcollection.get_all_items()]).bounds)]
         rootcollection.extent.spatial = pystac.SpatialExtent(bounds)
-        """
+        
 
 
     def get_metadata_content(self, bucket, metadatafile, resource):
@@ -144,6 +142,7 @@ class STACing(object):
     def make_root_collection(self):
 
         print('making root collection')
+        # collection instead of catalog because catalog does not have extent information
 
         # preliminary apprx Finland, later with bbox of all tiles from bucketname
         sp_extent = pystac.SpatialExtent([[20.57,59.93,29.80,70.29]])
