@@ -6,6 +6,7 @@ import rasterio
 from shapely.geometry import box, mapping, GeometryCollection, shape
 from xml.dom import minidom
 import json
+from pystac.extensions.eo import EOExtension, Band
 
 """
 ## TODO:
@@ -70,17 +71,23 @@ class STACing(object):
             print(listofsafes)
 
             for safe in listofsafes:
-                print(safe)
+                print('one safe')
 
                 # this results in one file, should work without list!
                 metadatafile = [x for x in bucketcontentmtd if safe in x][0]
                 jp2images = []
-                [jp2images.append(x) for x in bucketcontentjp2 if safe in x]
+                # only jp2 that are image bands
+                [jp2images.append(x) for x in bucketcontentjp2 if safe in x and 'IMG_DATA' in x]
+
 
                 metadatacontent = self.get_metadata_content(bucket, metadatafile, resource)
 
+                thumbnail = self.get_thumbnail(safe)
+
         
                 for jp2image in jp2images:
+
+                    print('one image')
 
                     uri = '/vsis3/' + bucket + '/' + jp2image
 
@@ -104,7 +111,7 @@ class STACing(object):
 
                     #rootcollection.describe()
                     
-                    rootcollection.normalize_hrefs('./stacs')
+                    rootcollection.normalize_hrefs('./stacs_eo')
 
                     rootcollection.validate_all()
                     rootcollection.save()
@@ -136,6 +143,8 @@ class STACing(object):
 
     def make_root_collection(self):
 
+        print('making root collection')
+
         # preliminary apprx Finland, later with bbox of all tiles from bucketname
         sp_extent = pystac.SpatialExtent([[20.57,59.93,29.80,70.29]])
         # fill with general Sentinel-2 timeframe, later get from all safefiles
@@ -144,6 +153,8 @@ class STACing(object):
         extent = pystac.Extent(sp_extent, tmp_extent)
 
         rootcollection = pystac.Collection(id='Sentinel-2', description = 'Sentinel-2 dataset', extent = extent)
+
+        print('root collection made')
 
         return rootcollection 
 
@@ -168,12 +179,16 @@ class STACing(object):
 
     def make_tile_collection(self,tile):
 
+        print('making tilecollection')
+
         sp_extent = pystac.SpatialExtent(self.get_tile_extent(tile))
         tmp_extent = pystac.TemporalExtent(self.get_temporal_extent())
         extent = pystac.Extent(sp_extent, tmp_extent)
         
 
         tilecollection = pystac.Collection(id=tile, description = 'Sentinel-2 dataset of tile ' + tile, extent = extent, stac_extensions='')
+
+        print('tilecollection made')
 
         return tilecollection
 
@@ -192,7 +207,7 @@ class STACing(object):
     def make_item(self, uri, metadatacontent):
 
     
-        print('yea')
+        print('making item')
         params = {}
         #print('nametest: '+ uri.split('/')[3])
         params['id'] = uri.split('/')[3]
@@ -207,6 +222,10 @@ class STACing(object):
             
         # not currently used
         #mtddict = self.get_metadata_from_xml(metadatacontent)
+        # not currently used, could not find extension schema
+        mtddict = self.get_metadata_from_xml(metadatacontent)
+
+        
 
         # could also be start_datetime and end_datetime from metadata
         params['datetime'] = datetime.strptime(uri.split('_')[2][0:8], '%Y%m%d')
@@ -214,25 +233,28 @@ class STACing(object):
         #params['start_datetime'] = mtddict['start_time']
         #params['end_datetime'] = mtddict['end_time']
         params['properties'] = {}
-        #following line is not tested
-        #params['extensions'] = ['EOExtension']
+
+        params['properties']['cloud_cover'] = mtddict['cc_perc']
+        #following are not part of eo extension
+        params['properties']['no_data'] = mtddict['nodata_perc']
+        params['properties']['orbit'] = mtddict['orbit']
+        params['properties']['baseline'] = mtddict['baseline']
+        # following are part of general metadata
+        params['properties']['platform'] = 'sentinel-2'
+        params['properties']['instrument'] = 'msi'
+        params['properties']['constellation'] = 'sentinel-2'
+        params['properties']['mission'] = 'copernicus'
+        
 
         stacitem = pystac.Item(**params)
 
-        # not currently used, could not find extension schema
-        # mtddict = self.get_metadata_from_xml(metadatacontent)
+        # below needed? possibly for reading , see https://github.com/stac-extensions/eo
+        EOExtension.add_to(stacitem)
 
-        #eo_ext = pystac.extensions.eo.EOExtension.ext(stacitem)
+        # bands seem useful for multiband tifs but not for s2?
+        # bands have more metadata but no link to file?
         
-
-        #print(eo_ext)
-
-        #eo_ext.cloud_cover = mtddict['cc_perc']
-
-
-        # try also following instead of above
-        #item.ext.enable('eo')
-        #item.ext.eo.cloud_cover = value
+        print('item made')
 
         return stacitem
 
@@ -247,8 +269,10 @@ class STACing(object):
         stacitem.add_asset(key=full_bandname, asset=pystac.Asset(href=uri,
                                                     title=full_bandname,
                                                     media_type=pystac.MediaType.JPEG2000))
-
+        print('asset added')
         stacitem.validate()
+        print('asset validated')
+
 
         return stacitem
 
@@ -258,18 +282,19 @@ class STACing(object):
 
     def get_metadata_from_xml(self, metadatabody):
 
-
+        print('metadata extraction start')
         doc = minidom.parse(metadatabody)
         metadatadict = {}
         metadatadict['cc_perc'] = int(float(self.get_xml_content(doc,'Cloud_Coverage_Assessment')))
         metadatadict['nodata_perc'] = 100 - float(self.get_xml_content(doc,'NODATA_PIXEL_PERCENTAGE'))
-        metadatadict['start_time'] = self.get_xml_content(doc,'PRODUCT_START_TIME')
-        metadatadict['end_time'] = self.get_xml_content(doc,'PRODUCT_STOP_TIME')
-        metadatadict['bbox'] = self.get_xml_content(doc,'EXT_POS_LIST')
+        #metadatadict['start_time'] = self.get_xml_content(doc,'PRODUCT_START_TIME')
+        #metadatadict['end_time'] = self.get_xml_content(doc,'PRODUCT_STOP_TIME')
+        #metadatadict['bbox'] = self.get_xml_content(doc,'EXT_POS_LIST')
         metadatadict['orbit'] = self.get_xml_content(doc,'SENSING_ORBIT_NUMBER')
         metadatadict['baseline'] = self.get_xml_content(doc,'PROCESSING_BASELINE')
-        metadatadict['producttype'] = self.get_xml_content(doc,'PRODUCT_TYPE')
+        #metadatadict['producttype'] = self.get_xml_content(doc,'PRODUCT_TYPE')
         #productname = get_xml_content(doc,'PRODUCT_URI').split('.')[0]
+        print('metadata extraction end')
 
         return metadatadict
 
@@ -277,4 +302,3 @@ class STACing(object):
 STACing()
 
 
-# see https://github.com/stac-extensions/eo
