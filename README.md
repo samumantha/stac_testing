@@ -24,3 +24,5 @@ also check:
 https://stacindex.org/
 https://github.com/stac-utils/stac-layer
 https://github.com/stac-utils/stac-sentinel
+
+https://hackmd.io/@samumantha/STAC

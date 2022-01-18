@@ -22,6 +22,8 @@ from rasterio.crs import CRS
 
 """
 
+#conda activate allas_stac
+
 # make Sentinel-2 collection with metadata
 
 class STACing(object):
@@ -44,6 +46,10 @@ class STACing(object):
     
         itemlist = []
         rootcollection = self.make_root_collection()
+
+        rootcatalog = pystac.Catalog(id='Sentinel-2 catalog', description='Testcatalog.')
+        rootcatalog.add_child(rootcollection)
+
 
         for bucket in buckets: 
             print(bucket)     
@@ -96,11 +102,15 @@ class STACing(object):
 
                 metadatacontent = self.get_metadata_content(bucket, metadatafile, resource)
 
+
+
                 for jp2image in jp2images:
 
                     print('one image')
 
                     uri = '/vsis3/' + bucket + '/' + jp2image
+                    #uri = 'https://a3s.fi/' + bucket + '/' + jp2image
+                    print(uri)
 
                     #safename = jp2image.split('/')[0]
                     #print(safename)
@@ -108,21 +118,23 @@ class STACing(object):
 
                     if not safe in [x.id for x in list(tilecollection.get_items())]:
                         item = self.make_item(uri, metadatacontent,safecrs_string)
+                        # add preview image 
+                        #self.add_asset(item, '/vsis/' + bucket + '/' + previewimage, True)
+                        self.add_asset(item, 'https://a3s.fi/' + bucket + '/' + previewimage, True)
 
                     else:
                         
                         item = [x for x in list(tilecollection.get_items()) if safe in x.id][0]
                         self.add_asset(item, uri)
-                        # add preview image 
-                        self.add_asset(item, '/vsis/' + bucket + '/' + previewimage, True)
-
+   
 
                     tilecollection.add_item(item)
                     
                     # safe to stac directory
-                    rootcollection.normalize_hrefs('stac')
-
-                    rootcollection.validate_all()
+                    #rootcollection.normalize_hrefs('stac_catalog')
+                    rootcatalog.normalize_hrefs('stac_catalog5')
+                    #rootcollection.validate_all()
+                    rootcatalog.validate_all()
 
                     # update spatial extent
                     print('update spatial extent of root')
@@ -136,7 +148,7 @@ class STACing(object):
                     #bounds_transformed = self.transform_crs(tilebounds, safecrs_string)
                     tilecollection.extent.spatial = pystac.SpatialExtent(tilebounds)
 
-                    rootcollection.save()
+                    rootcatalog.save()
         
 
 
@@ -151,10 +163,10 @@ class STACing(object):
 
     def get_crs(self,crsmetadatafile):
         print(crsmetadatafile)
-        doc = minidom.parse(crsmetadatafile)
-        print(doc)
+        with minidom.parse(crsmetadatafile) as doc:
+            print(doc)
 
-        crsstring = self.get_xml_content(doc, 'HORIZONTAL_CS_CODE')
+            crsstring = self.get_xml_content(doc, 'HORIZONTAL_CS_CODE')
         crsstring = crsstring.split(':')[-1]
 
         return crsstring
@@ -192,7 +204,7 @@ class STACing(object):
 
         print('root collection made')
 
-        return rootcollection 
+        return rootcollection
 
 
     # make tilecollection with collective metadata
@@ -218,6 +230,7 @@ class STACing(object):
         params = {}
         #print('nametest: '+ uri.split('/')[3])
         params['id'] = uri.split('/')[3]
+        print(params['id'])
 
     
         with rasterio.open(uri) as src:
@@ -228,7 +241,7 @@ class STACing(object):
             # is this footprint? ie bounds of everything excluding bounding nan?
             params['geometry'] = mapping(box(*params['bbox']))
             
-
+        print(metadatacontent)
         mtddict = self.get_metadata_from_xml(metadatacontent)
 
 
@@ -267,6 +280,8 @@ class STACing(object):
         
         print('adding asset')
         full_bandname = uri.split('/')[-1].split('.')[0]
+        public_uri = uri.replace('vsis3', 'https://a3s.fi')
+        public_uri = public_uri[1:]
 
         #print(full_bandname)
         #print(uri)
@@ -275,13 +290,13 @@ class STACing(object):
             print('false')
             print(full_bandname)
 
-            stacitem.add_asset(key=full_bandname, asset=pystac.Asset(href=uri,
+            stacitem.add_asset(key=full_bandname, asset=pystac.Asset(href=public_uri,
                                                         title=full_bandname,
                                                         media_type=pystac.MediaType.JPEG2000))
         else:
             print('true')
             print(full_bandname)
-            stacitem.add_asset(key=full_bandname, asset=pystac.Asset(href=uri,
+            stacitem.add_asset(key=full_bandname, asset=pystac.Asset(href=public_uri,
                                                         title=full_bandname,
                                                         roles= ['thumbnail'],
                                                         media_type=pystac.MediaType.JPEG2000))
@@ -299,17 +314,18 @@ class STACing(object):
     def get_metadata_from_xml(self, metadatabody):
 
         print('metadata extraction start')
-        doc = minidom.parse(metadatabody)
-        metadatadict = {}
-        metadatadict['cc_perc'] = int(float(self.get_xml_content(doc,'Cloud_Coverage_Assessment')))
-        metadatadict['data_cover'] = 100 - int(float(self.get_xml_content(doc,'NODATA_PIXEL_PERCENTAGE')))
-        #metadatadict['start_time'] = self.get_xml_content(doc,'PRODUCT_START_TIME')
-        #metadatadict['end_time'] = self.get_xml_content(doc,'PRODUCT_STOP_TIME')
-        #metadatadict['bbox'] = self.get_xml_content(doc,'EXT_POS_LIST')
-        metadatadict['orbit'] = self.get_xml_content(doc,'SENSING_ORBIT_NUMBER')
-        metadatadict['baseline'] = self.get_xml_content(doc,'PROCESSING_BASELINE')
-        #metadatadict['producttype'] = self.get_xml_content(doc,'PRODUCT_TYPE')
-        #productname = get_xml_content(doc,'PRODUCT_URI').split('.')[0]
+        print(metadatabody)
+        with minidom.parse(metadatabody) as doc:
+            metadatadict = {}
+            metadatadict['cc_perc'] = int(float(self.get_xml_content(doc,'Cloud_Coverage_Assessment')))
+            metadatadict['data_cover'] = 100 - int(float(self.get_xml_content(doc,'NODATA_PIXEL_PERCENTAGE')))
+            #metadatadict['start_time'] = self.get_xml_content(doc,'PRODUCT_START_TIME')
+            #metadatadict['end_time'] = self.get_xml_content(doc,'PRODUCT_STOP_TIME')
+            #metadatadict['bbox'] = self.get_xml_content(doc,'EXT_POS_LIST')
+            metadatadict['orbit'] = self.get_xml_content(doc,'SENSING_ORBIT_NUMBER')
+            metadatadict['baseline'] = self.get_xml_content(doc,'PROCESSING_BASELINE')
+            #metadatadict['producttype'] = self.get_xml_content(doc,'PRODUCT_TYPE')
+            #productname = get_xml_content(doc,'PRODUCT_URI').split('.')[0]
         print('metadata extraction end')
 
         return metadatadict
